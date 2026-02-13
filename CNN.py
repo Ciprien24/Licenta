@@ -13,7 +13,7 @@ from sklearn.metrics import accuracy_score, classification_report
 # --- CONFIGURATION ---
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 BATCH_SIZE = 16
-EPOCHS = 15
+EPOCHS = 30
 LEARNING_RATE = 0.0001
 DATA_PATH = "./Dataset_BUSI_with_GT/" # Point this to your unzipped folder
 
@@ -98,9 +98,13 @@ val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False)
 print("Setting up ResNet50...")
 model = models.resnet50(pretrained=True)
 
-# Freeze early layers (optional, but good for small datasets)
-for param in model.parameters():
-    param.requires_grad = False
+# Freeze the early layers (Layer 1 and 2), but UNFREEZE Layer 3 and 4 
+# so the model can learn ultrasound-specific textures.
+for name, param in model.named_parameters():
+    if "layer3" in name or "layer4" in name or "fc" in name:
+        param.requires_grad = True
+    else:
+        param.requires_grad = False
 
 # Replace the last layer for our 3 classes
 num_ftrs = model.fc.in_features
@@ -110,7 +114,8 @@ model = model.to(DEVICE)
 
 # --- 3. TRAINING LOOP ---
 criterion = nn.CrossEntropyLoss()
-optimizer = optim.Adam(model.fc.parameters(), lr=LEARNING_RATE)
+# Tell the optimizer to only update the unfrozen parameters
+optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=0.0001)
 
 def train_epoch(model, loader):
     model.train()
