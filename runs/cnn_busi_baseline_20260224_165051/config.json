@@ -1,0 +1,29 @@
+{
+  "device": "cpu",
+  "batch_size": 16,
+  "epochs": 30,
+  "learning_rate": 0.0001,
+  "data_path": "./Dataset_BUSI_with_GT/",
+  "seed": 42,
+  "img_size": [
+    224,
+    224
+  ],
+  "model": "resnet50_imagenet",
+  "frozen": "all except layer 3, layer 4, fc",
+  "classes": [
+    "normal",
+    "benign",
+    "malignant"
+  ],
+  "normalize_mean": [
+    0.485,
+    0.456,
+    0.406
+  ],
+  "normalize_std": [
+    0.229,
+    0.224,
+    0.225
+  ]
+}

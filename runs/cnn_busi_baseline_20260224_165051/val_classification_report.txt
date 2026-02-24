@@ -1,0 +1,17 @@
+Accuracy:0.8974
+
+              precision    recall  f1-score   support
+
+      normal     0.8571    0.8889    0.8727        27
+      benign     0.9011    0.9425    0.9213        87
+   malignant     0.9189    0.8095    0.8608        42
+
+    accuracy                         0.8974       156
+   macro avg     0.8924    0.8803    0.8849       156
+weighted avg     0.8983    0.8974    0.8966       156
+
+
+Confusion Matrix: 
+[[24  3  0]
+ [ 2 82  3]
+ [ 2  6 34]]

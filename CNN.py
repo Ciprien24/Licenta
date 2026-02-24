@@ -9,6 +9,9 @@ import glob
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, classification_report
+import json, random, time #imports for run folder
+import numpy as np
+from sklearn.metrics import confusion_matrix
 
 # --- CONFIGURATION ---
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -18,6 +21,25 @@ LEARNING_RATE = 0.0001
 DATA_PATH = "./Dataset_BUSI_with_GT/" # Point this to your unzipped folder
 
 print(f"Using device: {DEVICE}")
+
+#Adding a run folder + seed
+
+RUN_NAME = time.strftime("cnn_busi_baseline_%Y%m%d_%H%M%S")
+RUN_DIR = os.path.join("runs", RUN_NAME)
+os.makedirs(os.path.join(RUN_DIR, "checkpoints"), exist_ok = True)
+os.makedirs(os.path.join(RUN_DIR, "preds"), exist_ok = True)
+os.makedirs(os.path.join(RUN_DIR, "plots"), exist_ok = True)
+
+SEED = 42
+def seed_everything(seed = 42):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
+seed_everything(SEED)
 
 # --- 1. DATA PREPARATION ---
 class BUSIDataset(Dataset):
@@ -40,7 +62,19 @@ class BUSIDataset(Dataset):
         if self.transform:
             image = self.transform(image)
 
-        return image, label
+        return image, label, img_path
+
+
+#Helper Evaluate
+def evaluate_and_save(model, loader, split_name = "val"):
+    model.eval()
+    all_probs = []
+    all_preds = []
+    all_labels = []
+    all_paths = []
+
+    with torch.no_grad():
+        pass
 
 # Load file paths
 # Assuming folder structure: .../benign/img.png, .../malignant/img.png, .../normal/img.png
@@ -52,9 +86,8 @@ def load_data(root_dir):
     for label_idx, class_name in enumerate(classes):
         # BUSI images often have masks named similar to images. We need to filter only the original images.
         # Usually original images don't have "_mask" in the name.
-        path_pattern = os.path.join(root_dir, class_name, "*).png") 
         # Note: BUSI naming can be tricky (e.g., "benign (1).png"). Adjust glob pattern as needed.
-        # A safer generic way:
+        # A safer generic way:]
         full_class_path = os.path.join(root_dir, class_name)
         for filename in os.listdir(full_class_path):
             if 'mask' not in filename and filename.endswith('.png'):
@@ -69,6 +102,34 @@ all_images, all_labels, class_names = load_data(DATA_PATH)
 
 # Split Data (80% Train, 20% Val)
 X_train, X_val, y_train, y_val = train_test_split(all_images, all_labels, test_size=0.2, stratify=all_labels, random_state=42)
+#Save Split
+split = {
+    "train": X_train,
+    "val":X_val,
+    "y_train":y_train,
+    "y_val":y_val,
+    "classes":class_names
+
+}
+with open(os.path.join(RUN_DIR,"split.json"),"w") as f:
+    json.dump(split, f, indent = 2)
+# Save Config
+config = { 
+    "device": str(DEVICE),
+    "batch_size": BATCH_SIZE,
+    "epochs": EPOCHS,
+    "learning_rate": LEARNING_RATE,
+    "data_path": DATA_PATH,
+    "seed": SEED,
+    "img_size":[224, 224],
+    "model":"resnet50_imagenet",
+    "frozen":"all except layer 3, layer 4, fc",
+    "classes": class_names,
+    "normalize_mean":[0.485, 0.456, 0.406],
+    "normalize_std":[0.229, 0.224, 0.225],
+}
+with open(os.path.join(RUN_DIR, "config.json"),"w") as f:
+    json.dump(config, f, indent = 2)
 
 # Transforms (Crucial for Medical Imaging)
 train_transforms = transforms.Compose([
@@ -112,10 +173,16 @@ model.fc = nn.Linear(num_ftrs, len(class_names))
 
 model = model.to(DEVICE)
 
+
 # --- 3. TRAINING LOOP ---
 criterion = nn.CrossEntropyLoss()
 # Tell the optimizer to only update the unfrozen parameters
 optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=0.0001)
+
+#Save the best checkpoint
+best_val_acc = -1.0
+best_path = os.path.join(RUN_DIR, "checkpoints", "best.pt")
+last_path = os.path.join(RUN_DIR, "checkpoints", "last.pt")
 
 def train_epoch(model, loader):
     model.train()
@@ -123,7 +190,7 @@ def train_epoch(model, loader):
     correct = 0
     total = 0
     
-    for images, labels in loader:
+    for images, labels, _ in loader:
         images, labels = images.to(DEVICE), labels.to(DEVICE)
         
         optimizer.zero_grad()
@@ -147,7 +214,7 @@ def validate_epoch(model, loader):
     all_labels = []
     
     with torch.no_grad():
-        for images, labels in loader:
+        for images, labels, _ in loader:
             images, labels = images.to(DEVICE), labels.to(DEVICE)
             outputs = model(images)
             _, predicted = torch.max(outputs.data, 1)
@@ -159,13 +226,80 @@ def validate_epoch(model, loader):
             
     return 100 * correct / total, all_preds, all_labels
 
+def evaluate_and_save(model, loader, split_name = "val"):
+    model.eval()
+    all_preds, all_labels, all_paths = [], [], []
+    all_probs = []
+
+    with torch.no_grad():
+        for images, labels, paths in loader:
+            images = images.to(DEVICE)
+            outputs = model(images)
+            probs = torch.softmax(outputs, dim = 1).cpu().numpy()
+            preds = probs.argmax(axis=1)
+
+            all_probs.extend(probs)
+            all_preds.extend(preds)
+            all_labels.extend(labels.numpy())
+            all_paths.extend(paths)
+
+    # report
+
+    report = classification_report(all_labels, all_preds, target_names=class_names, digits=4)
+    acc = accuracy_score(all_labels, all_preds)
+    cm = confusion_matrix(all_labels, all_preds)
+
+    with open(os.path.join(RUN_DIR, f"{split_name}_classification_report.txt"),"w") as f:
+        f.write(f"Accuracy:{acc:.4f}\n\n")
+        f.write(report)
+        f.write("\n\nConfusion Matrix: \n")
+        f.write(np.array2string(cm))
+    # save preds csv
+
+    probs_df = pd.DataFrame(all_probs, columns=[f"prob_{c}" for c in class_names])
+    df = pd.DataFrame({
+        "path": all_paths,
+        "y_true": all_labels,
+        "y_pred": all_preds,
+    })
+    df = pd.concat([df, probs_df], axis=1)
+    df.to_csv(os.path.join(RUN_DIR, "preds", f"{split_name}_predictions.csv"), index=False)
+
+    return acc, cm, report
+
+
 # Run Training
-print("Starting Training...")
+
+print("Starting Training")
 for epoch in range(EPOCHS):
     train_loss, train_acc = train_epoch(model, train_loader)
     val_acc, _, _ = validate_epoch(model, val_loader)
-    
-    print(f"Epoch [{epoch+1}/{EPOCHS}] Train Loss: {train_loss:.4f} | Train Acc: {train_acc:.2f}% | Val Acc: {val_acc:.2f}%")
 
-print("Training Complete. Saving Baseline Model...")
+    #Save LAST checkpoint every epoch
+    torch.save({
+        "model_state": model.state_dict(),
+        "epoch": epoch + 1,
+        "val_acc": val_acc
+    }, last_path)
+
+    #Save BEST checkpoint
+    if val_acc > best_val_acc:
+        best_val_acc = val_acc
+        torch.save({
+            "model_state":model.state_dict(),
+            "epoch": epoch+ 1,
+            "val_acc": val_acc
+        }, best_path)
+    print(f"Epoch [{epoch+1}/{EPOCHS}] "
+          f"Train Loss: {train_loss:.4f} | "
+          f"Train Acc: {train_acc:.2f}% | "
+          f"Val Acc:{val_acc:.2f}%")
+print(f"Training Complete. Best Val Acc: {best_val_acc:.2f}%")
+
+ckpt = torch.load(best_path, map_location=DEVICE)
+model.load_state_dict(ckpt["model_state"])
+
+val_acc,cm,rep = evaluate_and_save(model,val_loader, "val")
+print("Saved:", os.path.join(RUN_DIR, "val_classification_report.txt"))
+print("Saved:", os.path.join(RUN_DIR, "preds", "val_predictions.csv"))
 torch.save(model.state_dict(), 'baseline_resnet50.pth')
