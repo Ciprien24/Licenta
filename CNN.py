@@ -328,7 +328,7 @@ evaluate_and_save(model, val_loader,"val")
 evaluate_and_save(model, test_loader, "test")
 
 print("Saved test report to: ", os.path.join(RUN_DIR, "test_classification_report.txt"))
-print("Saved test preds to :", os.pat.join(RUN_DIR, "preds", "test_predictions.csv"))
+print("Saved test preds to :", os.path.join(RUN_DIR, "preds", "test_predictions.csv"))
 
 val_acc,cm,rep = evaluate_and_save(model,val_loader, "val")
 print("Saved:", os.path.join(RUN_DIR, "val_classification_report.txt"))

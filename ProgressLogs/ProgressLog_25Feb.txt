@@ -1,0 +1,101 @@
+Jurnal de progres – 25 februarie 2026
+
+Astăzi am continuat consolidarea rigurozității experimentale pentru modelul CNN baseline și am implementat un split corect train/validation/test pentru evaluare științifică validă.
+
+Implementarea split-ului train / validation / test
+
+Am modificat împărțirea datasetului BUSI astfel încât să folosesc un split de tip:
+
+70% train
+
+10% validation
+
+20% test
+
+Dimensiuni finale:
+
+Train: 546 imagini
+
+Validation: 78 imagini
+
+Test: 156 imagini
+
+Total: 780 imagini
+
+Split-ul este stratificat, iar distribuția claselor este păstrată proporțional în toate cele trei subseturi.
+
+Distribuția claselor în test:
+
+Benign: 87
+
+Malignant: 42
+
+Normal: 27
+
+Această structură permite:
+
+Antrenarea modelului pe train
+
+Selectarea celui mai bun checkpoint pe validation
+
+Raportarea performanței finale exclusiv pe test
+
+Astfel, evaluarea devine corectă din punct de vedere metodologic și potrivită pentru o lucrare de licență.
+
+Antrenarea din nou a modelului CNN baseline pe noul split
+
+Am reantrenat ResNet50 (fine-tuned, cu layer3, layer4 și fc dezghețate) folosind noua împărțire a datelor.
+
+Checkpoint-ul cu cea mai bună performanță pe validation a fost salvat automat și ulterior utilizat pentru evaluarea pe test.
+
+Evaluarea finală pe setul de test
+
+Rezultate obținute pe test:
+
+Accuracy: 83.97%
+Macro F1-score: 0.8202
+Weighted F1-score: 0.8394
+
+Performanță pe clase:
+
+Normal
+
+F1-score: 0.80
+
+Benign
+
+F1-score: 0.88
+
+Malignant
+
+F1-score: 0.78
+
+Observații importante:
+
+Modelul are performanță foarte bună pe clasa benign (majoritară).
+
+Performanța pe clasa malignant este mai scăzută (recall ≈ 76%), ceea ce înseamnă că aproximativ 24% din cazurile maligne sunt clasificate greșit.
+
+Confuzia principală apare între benign și malignant.
+
+Acest comportament este realist și oferă un punct solid de analiză pentru comparația viitoare cu Vision Transformers și modelul hibrid.
+
+Concluzie la finalul zilei
+
+Am implementat un split experimental corect (70/10/20).
+
+Am obținut un baseline CNN valid și reproductibil.
+
+Am evaluat performanța exclusiv pe test set.
+
+Am identificat limitele modelului (confuzie benign vs malignant).
+
+Proiectul are acum un baseline stabil și metodologic corect, pregătit pentru comparație cu:
+
+Model ViT pur
+
+Model hibrid CNN–ViT
+
+Următorul pas: implementarea și antrenarea unui Vision Transformer baseline pe exact același split de date.
+
+La asta se mai adauga si downloadarea a vreo 20 de research paper uri pentru capitolul de literatura
