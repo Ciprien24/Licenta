@@ -101,13 +101,33 @@ print("Loading data paths...")
 all_images, all_labels, class_names = load_data(DATA_PATH)
 
 # Split Data (80% Train, 20% Val)
-X_train, X_val, y_train, y_val = train_test_split(all_images, all_labels, test_size=0.2, stratify=all_labels, random_state=42)
+#We are replacing this with a 70/10/20 split -> X_train, X_val, y_train, y_val = train_test_split(all_images, all_labels, test_size=0.2, stratify=all_labels, random_state=42)
+
+#First: Split out test = 20%
+X_trainval, X_test, y_trainval, y_test = train_test_split(
+    all_images, all_labels,
+    test_size=0.20,
+    stratify=all_labels,
+    random_state=SEED
+)
+
+#Second : we split Train/Val from the rest of 80%
+#val = 10% of total so 10% out of 80  = 0.125
+
+X_train,X_val, y_train, y_val = train_test_split(
+    X_trainval, y_trainval,
+    test_size=0.125,
+    stratify=y_trainval,
+    random_state=SEED
+)
 #Save Split
 split = {
     "train": X_train,
     "val":X_val,
+    "test":X_test,
     "y_train":y_train,
     "y_val":y_val,
+    "y_test":y_test,
     "classes":class_names
 
 }
@@ -151,9 +171,11 @@ val_transforms = transforms.Compose([
 # Create Loaders
 train_dataset = BUSIDataset(X_train, y_train, transform=train_transforms)
 val_dataset = BUSIDataset(X_val, y_val, transform=val_transforms)
+test_dataset = BUSIDataset(X_test, y_test, transform=val_transforms)
 
 train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
 val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False)
+test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False)
 
 # --- 2. MODEL SETUP (BASELINE CNN) ---
 print("Setting up ResNet50...")
@@ -298,6 +320,15 @@ print(f"Training Complete. Best Val Acc: {best_val_acc:.2f}%")
 
 ckpt = torch.load(best_path, map_location=DEVICE)
 model.load_state_dict(ckpt["model_state"])
+
+#Evaluate on val
+evaluate_and_save(model, val_loader,"val")
+
+#Evaluate on test
+evaluate_and_save(model, test_loader, "test")
+
+print("Saved test report to: ", os.path.join(RUN_DIR, "test_classification_report.txt"))
+print("Saved test preds to :", os.pat.join(RUN_DIR, "preds", "test_predictions.csv"))
 
 val_acc,cm,rep = evaluate_and_save(model,val_loader, "val")
 print("Saved:", os.path.join(RUN_DIR, "val_classification_report.txt"))
